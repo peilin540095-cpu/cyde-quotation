@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CYDE 2026 Quotation (Locked One Page + Auto No. + PDF)</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- html2pdf (download PDF directly) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+    body { font-family: 'Inter', 'PingFang SC', sans-serif; background: #f8fafc; }
+    .glass-card { background: rgba(255,255,255,0.92); backdrop-filter: blur(10px); border: 1px solid rgba(226,232,240,0.85); }
+    .cyber-blue { color: #1e40af; }
+    .cyber-bg { background-color: #1e40af; }
+
+    input[type="text"]:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: #1e40af;
+      box-shadow: 0 0 0 2px rgba(191, 219, 254, 0.5);
+    }
+
+    /* ===== A4 frame (for locked one-page output) ===== */
+    #docRoot {
+      width: min(210mm, 100%);
+      margin: 0 auto;
+      box-sizing: border-box;
+    }
+
+    /* Output mode: we scale #page to fit exactly 1 A4 */
+    .onepage-output body { background: white !important; }
+    .onepage-output .no-output { display: none !important; }
+    .onepage-output .only-screen { display: none !important; }
+    .onepage-output .only-output { display: block !important; }
+
+    /* page wrapper that will be scaled */
+    #page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto;
+      box-sizing: border-box;
+    }
+    /* prevent any horizontal overflow in output */
+    .onepage-output #page { overflow: hidden !important; }
+    .onepage-output #page * { max-width: 100% !important; box-sizing: border-box !important; }
+
+    /* Compact one-page layout */
+    .only-output { display: none; }
+    .onepage-output .glass-card { box-shadow: none !important; }
+    .onepage-output .rounded-2xl { border-radius: 12px !important; }
+
+    /* Better wrapping for long customer inputs */
+    .wrap-anywhere { overflow-wrap: anywhere; word-break: break-word; }
+
+    /* Print */
+    @media print {
+      @page { size: A4; margin: 0; }
+      body { background: white; padding: 0 !important; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+
+<body class="p-4 md:p-10 text-slate-800">
+  <div id="docRoot">
+
+    <!-- ===== SCREEN UI (full interactive) ===== -->
+    <div class="only-screen max-w-6xl mx-auto">
+
+      <!-- Header -->
+      <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-slate-200 pb-6">
+        <div>
+          <h1 class="text-3xl font-bold cyber-blue tracking-tight">CYDE INTERNATIONAL LAW FIRM</h1>
+          <p class="text-slate-500 uppercase text-sm tracking-widest mt-1">Monthly Bookkeeping Fee Quotation · 2026 Edition</p>
+        </div>
+        <div class="mt-4 md:mt-0 text-right space-y-1">
+          <div class="flex items-center justify-end text-xs font-mono text-slate-400">
+            <span>NO: </span>
+            <input id="quoteNo" type="text" class="ml-1 bg-transparent border-none text-right w-48 focus:ring-0" title="自动生成，可修改">
+          </div>
+          <p class="text-sm font-semibold text-slate-600">出具日期：<span id="currentDate">2026.02.07</span></p>
+          <p class="text-[10px] text-slate-400">有效期至：2026.12.31</p>
+        </div>
+      </header>
+
+      <!-- Customer Info -->
+      <section class="glass-card rounded-2xl p-6 shadow-sm mb-8 border-l-4 border-blue-600">
+        <h2 class="text-sm font-bold mb-4 flex items-center text-blue-800 uppercase tracking-wider">
+          客户基本信息 / Client Information
+        </h2>
+
+        <div id="clientHint" class="hidden mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          提示：建议补全公司名称与联系人后再导出 PDF，以便作为正式报价文件留存。
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div class="space-y-1">
+            <label class="text-[10px] font-bold text-slate-400 uppercase">公司名称 / Company Name</label>
+            <input id="companyName" type="text" placeholder="请输入公司全称" maxlength="120"
+              class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm transition-all">
+            <p class="text-[10px] text-slate-400">建议 ≤ 120 字（超长将自动缩放/换行）</p>
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] font-bold text-slate-400 uppercase">联系人 / Contact Person</label>
+            <input id="contactPerson" type="text" placeholder="姓名" maxlength="80"
+              class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm transition-all">
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] font-bold text-slate-400 uppercase">联系电话 / Phone Number</label>
+            <input id="phoneNumber" type="text" placeholder="Tel / WhatsApp" maxlength="60"
+              class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm transition-all">
+          </div>
+        </div>
+      </section>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+        <!-- Left -->
+        <div class="lg:col-span-2 space-y-8">
+
+          <section class="glass-card rounded-2xl p-6 shadow-sm">
+            <h2 class="text-xl font-bold mb-6 flex items-center">
+              <span class="cyber-bg text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">01</span>
+              服务等级与规模选择
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+              <button type="button" onclick="setTier('L1')" id="btn-L1"
+                class="tier-btn border-2 p-4 rounded-xl text-left transition-all hover:border-blue-500 border-slate-100 bg-white">
+                <span class="block font-bold text-lg">等级一 (L1)</span>
+                <span class="block text-xs text-slate-500 mt-1">低复杂度：无外币、无跨境、无存货</span>
+              </button>
+              <button type="button" onclick="setTier('L2')" id="btn-L2"
+                class="tier-btn border-2 p-4 rounded-xl text-left transition-all hover:border-blue-500 border-blue-600 ring-2 ring-blue-100 bg-blue-50">
+                <span class="block font-bold text-lg">等级二 (L2)</span>
+                <span class="block text-xs text-slate-500 mt-1">中复杂度：≤2外币、月均跨境≤5笔</span>
+              </button>
+              <button type="button" onclick="setTier('L3')" id="btn-L3"
+                class="tier-btn border-2 p-4 rounded-xl text-left transition-all hover:border-blue-500 border-slate-100 bg-white">
+                <span class="block font-bold text-lg">等级三 (L3)</span>
+                <span class="block text-xs text-slate-500 mt-1">高复杂度：≥3外币、复杂存货核算</span>
+              </button>
+            </div>
+
+            <div class="space-y-3">
+              <label class="block text-sm font-semibold text-slate-600 uppercase">月度凭证规模 (会计组数)</label>
+              <input type="range" id="voucherRange" min="1" max="5" step="1" value="2"
+                class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                oninput="updateVolume()">
+              <div class="flex justify-between text-xs font-mono text-slate-400 px-1">
+                <span>1-20组</span><span>21-60组</span><span>61-100组</span><span>101-150组</span><span>151-250组</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="glass-card rounded-2xl p-6 shadow-sm border-l-4 border-l-red-500">
+            <h2 class="text-xl font-bold mb-4 flex items-center text-red-700">
+              <span class="bg-red-700 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">02</span>
+              核心对价定义 (必读)
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div class="bg-white p-4 rounded-lg border border-slate-100">
+                <h3 class="font-bold text-sm mb-2 text-slate-700">✅ 包含在月费中</h3>
+                <ul class="text-xs space-y-1 text-slate-600">
+                  <li>• 泰国税务局 e-Filing 电子申报</li>
+                  <li>• 申报提交成功页面截图 (PDF)</li>
+                  <li class="text-blue-600 font-semibold underline">• 交付物：申报回执即履行完毕</li>
+                </ul>
+              </div>
+              <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 opacity-80">
+                <h3 class="font-bold text-sm mb-2 text-slate-400">❌ 不含在月费中</h3>
+                <ul class="text-xs space-y-1 text-slate-400">
+                  <li>• 纳税申报原始底稿 / 明细账</li>
+                  <li>• 资产负债表 / 利润表</li>
+                  <li class="text-red-400">• 任何形式的财务分析报告</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Right -->
+        <div class="lg:col-span-1">
+          <div class="space-y-6">
+
+            <div class="bg-slate-900 text-white rounded-2xl p-6 shadow-xl">
+              <h3 class="text-sm font-bold uppercase tracking-widest text-slate-400 mb-6">实时计价费用预计</h3>
+
+              <div class="space-y-4 mb-6">
+                <div class="flex justify-between items-end border-b border-slate-700 pb-2">
+                  <span class="text-xs text-slate-400">基础月费 (Base)</span>
+                  <span class="text-xl font-mono" id="displayBase">22,000 <small class="text-xs">THB</small></span>
+                </div>
+
+                <div class="flex justify-between items-center">
+                  <span class="text-xs text-slate-400">打包周期选项</span>
+                  <select id="cycleSelector" onchange="calculateTotal()"
+                    class="bg-slate-800 border-none text-xs rounded p-1 focus:ring-1 focus:ring-blue-500">
+                    <option value="1">单月支付 (无折扣)</option>
+                    <option value="6">6个月预付 (95折)</option>
+                    <option value="12" selected>12个月预付 (9折)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="text-center bg-blue-600 rounded-xl p-6 mb-2">
+                <p class="text-[10px] uppercase font-bold text-blue-200 mb-1">总额 (不含税)</p>
+                <p class="text-4xl font-black font-mono tracking-tighter" id="displayTotal">237,600</p>
+                <p class="text-xs mt-1 text-blue-100">+ 7% VAT = <span id="displayWithVat">254,232</span> THB</p>
+              </div>
+
+              <div class="mt-3 text-[11px] text-slate-300 leading-relaxed">
+                <div>Tier：<b id="sumTier">L2</b></div>
+                <div>Voucher：<b id="sumVol">21–60</b></div>
+                <div>Cycle：<b id="sumCycle">12 months</b></div>
+              </div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-6 shadow-sm border-2 border-slate-200">
+              <h3 class="text-sm font-bold mb-4 uppercase text-slate-600 tracking-wide">输出 / Export</h3>
+
+              <div class="space-y-3">
+                <button id="printBtn"
+                  class="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">
+                  🔒 Locked One-Page Print
+                </button>
+
+                <button id="downloadPdfBtn"
+                  class="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-all">
+                  🔒 Locked One-Page Download PDF
+                </button>
+
+                <div class="mt-4 border-t border-slate-200 pt-4">
+                  <h4 class="text-xs font-bold uppercase text-slate-600 tracking-widest mb-3">签署确认 (必勾)</h4>
+                  <div class="space-y-2">
+                    <label class="flex items-start space-x-3 cursor-pointer">
+                      <input type="checkbox" checked class="confirm-check mt-1 w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500">
+                      <span class="text-[11px] leading-tight text-slate-500">
+                        月费仅含申报提交，不含报表/底稿。
+                      </span>
+                    </label>
+                    <label class="flex items-start space-x-3 cursor-pointer">
+                      <input type="checkbox" checked class="confirm-check mt-1 w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500">
+                      <span class="text-[11px] leading-tight text-slate-500">
+                        如需报表/明细材料，同意按专项服务另计。
+                      </span>
+                    </label>
+                  </div>
+
+                  <div id="mustCheckHint" class="hidden mt-3 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    请先勾选确认条款后再导出/打印。
+                  </div>
+                </div>
+
+                <div class="mt-4 text-[10px] text-slate-500 leading-relaxed">
+                  说明：导出/打印时系统会自动<strong>测量内容高度</strong>并计算缩放比例，保证<strong>永远 1 页 A4</strong>，即使输入超长文本也不会“出框”。
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <footer class="mt-10 text-center text-slate-400 text-[10px] leading-relaxed pb-6">
+        <p>CYDE INTERNATIONAL LAW FIRM · 2026 OFFICIAL QUOTATION</p>
+      </footer>
+    </div>
+
+    <!-- ===== OUTPUT PAGE (A4 locked one-page) ===== -->
+    <div class="only-output">
+      <div id="page" class="p-6">
+        <div class="flex justify-between items-start border-b border-slate-200 pb-3">
+          <div>
+            <div class="text-lg font-bold cyber-blue">CYDE INTERNATIONAL LAW FIRM</div>
+            <div class="text-[10px] text-slate-500 uppercase tracking-widest">Monthly Bookkeeping Fee Quotation · 2026</div>
+          </div>
+          <div class="text-right text-[10px] text-slate-600">
+            <div><span class="text-slate-400">NO:</span> <b id="opQuoteNo">—</b></div>
+            <div><span class="text-slate-400">Date:</span> <b id="opDate">—</b></div>
+            <div><span class="text-slate-400">Valid:</span> 2026.12.31</div>
+          </div>
+        </div>
+
+        <div class="mt-3 grid grid-cols-2 gap-3">
+          <div class="border border-slate-200 rounded-lg p-3">
+            <div class="text-[10px] font-bold text-slate-400 uppercase">Client</div>
+            <div class="mt-1 text-[11px] text-slate-700 leading-snug">
+              <div class="wrap-anywhere"><span class="text-slate-400">Company:</span> <b id="opCompany">—</b></div>
+              <div class="wrap-anywhere"><span class="text-slate-400">Contact:</span> <b id="opContact">—</b></div>
+              <div class="wrap-anywhere"><span class="text-slate-400">Phone:</span> <b id="opPhone">—</b></div>
+            </div>
+          </div>
+
+          <div class="border border-slate-200 rounded-lg p-3">
+            <div class="text-[10px] font-bold text-slate-400 uppercase">Plan & Pricing</div>
+            <div class="mt-1 text-[11px] text-slate-700 leading-snug">
+              <div><span class="text-slate-400">Tier:</span> <b id="opTier">L2</b></div>
+              <div><span class="text-slate-400">Volume:</span> <b id="opVol">21–60</b> / month</div>
+              <div><span class="text-slate-400">Cycle:</span> <b id="opCycle">12 months</b></div>
+              <div><span class="text-slate-400">Base:</span> <b id="opBase">22,000</b> THB / month</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3 grid grid-cols-2 gap-3">
+          <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+            <div class="text-[10px] font-bold text-slate-400 uppercase">Included / Excluded</div>
+            <div class="mt-1 text-[10px] text-slate-700 leading-snug">
+              <div><b>Included:</b> Thailand RD e-Filing submission + submission receipt (PDF).</div>
+              <div class="mt-1"><b>Excluded:</b> Statements / ledgers / working papers / analysis (add-on).</div>
+            </div>
+          </div>
+
+          <div class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <div class="text-[10px] font-bold text-blue-700 uppercase">Totals</div>
+            <div class="mt-1 text-[11px] text-slate-800 leading-snug">
+              <div><span class="text-slate-500">Total (ex VAT):</span> <b id="opTotal">237,600</b> THB</div>
+              <div><span class="text-slate-500">VAT 7%:</span> <b id="opVatAmt">16,632</b> THB</div>
+              <div class="text-blue-800"><span class="text-slate-500">Total (incl. VAT):</span> <b id="opWithVat">254,232</b> THB</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3 border border-slate-200 rounded-lg p-3">
+          <div class="text-[10px] font-bold text-slate-400 uppercase">Key Terms (Short)</div>
+          <ol class="mt-1 text-[10px] text-slate-700 leading-snug list-decimal pl-4 space-y-1">
+            <li>Monthly base fee covers e-Filing submission only; no statements/ledgers/analysis included.</li>
+            <li>Client must provide complete documents & bank statements before due date.</li>
+            <li>Government fees/fines/penalties/third-party costs are excluded.</li>
+            <li>If complexity/volume exceeds selected tier, fee may be adjusted or re-quoted.</li>
+          </ol>
+        </div>
+
+        <div class="mt-3 grid grid-cols-2 gap-6">
+          <div>
+            <div class="text-[10px] font-bold text-slate-400 uppercase">Client Signature</div>
+            <div class="border-b border-slate-300 mt-8"></div>
+            <div class="text-[9px] text-slate-400 italic mt-1">Date: ____ / ____ / ____</div>
+          </div>
+          <div>
+            <div class="text-[10px] font-bold text-slate-400 uppercase">Firm Stamp & Signature</div>
+            <div class="border-b border-slate-300 mt-8"></div>
+            <div class="text-[9px] text-slate-400 italic mt-1">CYDE INTERNATIONAL LAW FIRM</div>
+          </div>
+        </div>
+
+        <div class="mt-3 text-center text-[9px] text-slate-400">
+          Currency: THB only · VAT 7% (Thailand) · CYDE INTERNATIONAL LAW FIRM · 2026
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // =========================
+    // 1) Auto Quote Number (localStorage)
+    // =========================
+    function getYear() { return new Date().getFullYear(); }
+
+    function pad3(n){ return String(n).padStart(3,'0'); }
+
+    function nextQuoteNo(prefix = "CYDE-FAS") {
+      const year = getYear();
+      const key = `cyde_quote_counter_${year}`;
+      let counter = parseInt(localStorage.getItem(key) || "0", 10);
+      counter += 1;
+      localStorage.setItem(key, String(counter));
+      return `${prefix}-${year}-Q${pad3(counter)}`;
+    }
+
+    function initQuoteNo() {
+      const input = document.getElementById('quoteNo');
+      // If user already typed, don't override
+      if (input.value && input.value.trim().length > 0) return;
+      input.value = nextQuoteNo();
+    }
+
+    // =========================
+    // 2) Pricing logic
+    // =========================
+    const rates = {
+      L1: [7500, 10500, 13500, 18500, 23500],
+      L2: [15000, 22000, 32000, 45000, 65000],
+      L3: [35000, 45000, 60000, 85000, 120000]
+    };
+    const volLabels = ["1–20", "21–60", "61–100", "101–150", "151–250"];
+
+    let currentTier = 'L2';
+    let currentVolumeIdx = 1;
+
+    function setTier(tier) {
+      currentTier = tier;
+      document.querySelectorAll('.tier-btn').forEach(btn => {
+        btn.classList.remove('border-blue-600','ring-2','ring-blue-100','bg-blue-50');
+        btn.classList.add('border-slate-100','bg-white');
+      });
+      const activeBtn = document.getElementById(`btn-${tier}`);
+      activeBtn.classList.add('border-blue-600','ring-2','ring-blue-100','bg-blue-50');
+      calculateTotal();
+    }
+
+    function updateVolume() {
+      currentVolumeIdx = parseInt(document.getElementById('voucherRange').value, 10) - 1;
+      calculateTotal();
+    }
+
+    function calculateTotal() {
+      const basePrice = rates[currentTier][currentVolumeIdx];
+      const cycleMonths = parseInt(document.getElementById('cycleSelector').value, 10);
+
+      const discount = cycleMonths === 6 ? 0.95 : (cycleMonths === 12 ? 0.9 : 1);
+      const total = basePrice * cycleMonths * discount;
+      const vatAmt = total * 0.07;
+      const withVat = total + vatAmt;
+
+      // screen
+      document.getElementById('displayBase').innerHTML = `${basePrice.toLocaleString()} <small class="text-xs">THB</small>`;
+      document.getElementById('displayTotal').innerText = total.toLocaleString();
+      document.getElementById('displayWithVat').innerText = Math.round(withVat).toLocaleString();
+      document.getElementById('sumTier').innerText = currentTier;
+      document.getElementById('sumVol').innerText = volLabels[currentVolumeIdx];
+      document.getElementById('sumCycle').innerText = cycleMonths + " months";
+
+      // output page (A4)
+      document.getElementById('opTier').innerText = currentTier;
+      document.getElementById('opVol').innerText = volLabels[currentVolumeIdx];
+      document.getElementById('opCycle').innerText = cycleMonths + " months";
+      document.getElementById('opBase').innerText = basePrice.toLocaleString();
+      document.getElementById('opTotal').innerText = total.toLocaleString();
+      document.getElementById('opVatAmt').innerText = Math.round(vatAmt).toLocaleString();
+      document.getElementById('opWithVat').innerText = Math.round(withVat).toLocaleString();
+
+      // cache for export
+      window.__calc = { basePrice, cycleMonths, total, vatAmt, withVat };
+    }
+
+    // =========================
+    // 3) Validation & hints
+    // =========================
+    const companyName = document.getElementById('companyName');
+    const contactPerson = document.getElementById('contactPerson');
+    const phoneNumber = document.getElementById('phoneNumber');
+    const clientHint = document.getElementById('clientHint');
+    const mustCheckHint = document.getElementById('mustCheckHint');
+
+    function updateClientHint() {
+      const missing = (!companyName.value.trim() || !contactPerson.value.trim());
+      clientHint.classList.toggle('hidden', !missing);
+    }
+    [companyName, contactPerson].forEach(el => el.addEventListener('input', updateClientHint));
+
+    function allChecked() {
+      return Array.from(document.querySelectorAll('.confirm-check')).every(i => i.checked);
+    }
+    function enforceChecks() {
+      const ok = allChecked();
+      mustCheckHint.classList.toggle('hidden', ok);
+      return ok;
+    }
+    document.querySelectorAll('.confirm-check').forEach(c => c.addEventListener('change', enforceChecks));
+
+    // =========================
+    // 4) Locked One-Page Fit Algorithm
+    //    - Measure A4 in px (using an in-DOM mm ruler)
+    //    - Scale #page to fit EXACTLY within 1 page (width & height)
+    // =========================
+    function mmToPx(mm) {
+      // Use a live ruler for better accuracy across devices
+      const ruler = document.createElement('div');
+      ruler.style.position = 'absolute';
+      ruler.style.left = '-10000px';
+      ruler.style.top = '-10000px';
+      ruler.style.width = mm + 'mm';
+      ruler.style.height = '1mm';
+      document.body.appendChild(ruler);
+      const px = ruler.getBoundingClientRect().width;
+      ruler.remove();
+      return px;
+    }
+
+    function enterOutputMode() {
+      document.body.classList.add('onepage-output');
+      // Copy dynamic fields into output page
+      document.getElementById('opQuoteNo').innerText = (document.getElementById('quoteNo').value || '').trim() || '—';
+      document.getElementById('opDate').innerText = document.getElementById('currentDate').innerText;
+
+      document.getElementById('opCompany').innerText = companyName.value.trim() || '—';
+      document.getElementById('opContact').innerText = contactPerson.value.trim() || '—';
+      document.getElementById('opPhone').innerText = phoneNumber.value.trim() || '—';
+
+      // Ensure calculation is fresh
+      calculateTotal();
+    }
+
+    function fitOutputToOnePage() {
+      const page = document.getElementById('page');
+
+      // A4 size in px (no margin in print; for PDF we use html2pdf margin)
+      const a4w = mmToPx(210);
+      const a4h = mmToPx(297);
+
+      // Reset any previous scaling
+      page.style.transform = 'scale(1)';
+      page.style.transformOrigin = 'top left';
+
+      // Measure current content
+      const rect = page.getBoundingClientRect();
+      // rect is affected by transform, but currently scale=1
+      const contentW = rect.width;
+      const contentH = rect.height;
+
+      // Compute scale factor to fit both width and height
+      const scaleW = a4w / contentW;
+      const scaleH = a4h / contentH;
+      // Keep a tiny safety margin to avoid "out of frame" due to rounding
+      let scale = Math.min(scaleW, scaleH) * 0.995;
+
+      // Hard clamp (avoid too tiny)
+      if (scale > 1) scale = 1;
+      if (scale < 0.75) scale = 0.75; // still readable; content is already condensed
+
+      page.style.transform = `scale(${scale})`;
+
+      // After scaling, we can center it by translating (optional)
+      // but safest is top-left for print/pdf exactness.
+    }
+
+    function exitOutputMode() {
+      const page = document.getElementById('page');
+      page.style.transform = 'scale(1)';
+      page.style.transformOrigin = 'top left';
+      document.body.classList.remove('onepage-output');
+    }
+
+    // =========================
+    // 5) Print & Download PDF
+    // =========================
+    function safeFileName(s) {
+      return (s || '').trim().replace(/[\\/:*?"<>|]/g, '_').slice(0, 80) || 'CLIENT';
+    }
+
+    document.getElementById('printBtn').addEventListener('click', () => {
+      updateClientHint();
+      if (!enforceChecks()) return;
+
+      enterOutputMode();
+      // wait for DOM paint
+      setTimeout(() => {
+        fitOutputToOnePage();
+        setTimeout(() => {
+          window.print();
+          // when user returns, exit output mode
+          setTimeout(exitOutputMode, 300);
+        }, 50);
+      }, 50);
+    });
+
+    document.getElementById('downloadPdfBtn').addEventListener('click', async () => {
+      updateClientHint();
+      if (!enforceChecks()) return;
+
+      enterOutputMode();
+
+      // Wait for layout, then fit
+      await new Promise(r => setTimeout(r, 50));
+      fitOutputToOnePage();
+
+      const company = safeFileName(companyName.value || 'CLIENT');
+      const qno = safeFileName(document.getElementById('quoteNo').value || 'Q');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const fileName = `CYDE_${qno}_${company}_${dateStr}.pdf`;
+
+      const element = document.getElementById('page');
+
+      // Use small margins; page is already exact A4
+      const opt = {
+        margin:       [0, 0, 0, 0],
+        filename:     fileName,
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true, scrollY: 0 },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+
+      try {
+        await html2pdf().set(opt).from(element).save();
+      } finally {
+        exitOutputMode();
+      }
+    });
+
+    // =========================
+    // Init
+    // =========================
+    const today = new Date();
+    document.getElementById('currentDate').innerText =
+      `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+
+    initQuoteNo();
+    calculateTotal();
+    updateClientHint();
+    enforceChecks();
+  </script>
+</body>
+</html>
